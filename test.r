@@ -1,4 +1,5 @@
 library(tidyverse)
+library(dplyr) # Explicitly import dplyr for rowwise
 library(httr)
 library(readr)
 library(googlesheets4)
@@ -20,81 +21,31 @@ res <- GET(
 )
 if (!dir.exists("kobo_exports")) dir.create("kobo_exports")
 csv_content <- content(res, as = "text", encoding = "UTF-8")
-data <- read_delim(csv_content, delim = ";")
+data <- read_delim(csv_content, delim = ";") %>%
+select(-c(ends_with("note")))
 write_csv(data, "kobo_exports/form_test_clone.csv")
 
 
-view(data)
-
-
-
-
-res <- GET(
-  url = "https://eu.kobotoolbox.org/api/v2/assets/",
-  authenticate(username, password)
-)
-assets_json <- content(res, as = "text", encoding = "UTF-8")
-assets_list <- fromJSON(assets_json)
-
-
-
-# Extract the list of forms (assets)
-forms_df$asset_id <- sub(".*/assets/([a-z0-9-]+)/$", "\\1", forms_df$url)
-head(forms_df[, c("name", "uid", "asset_id")])
-
-for (i in seq_len(nrow(forms_df))) {
-  asset_id <- forms_df$asset_id[i]
-  export_url <- paste0("https://eu.kobotoolbox.org/api/v2/assets/", asset_id, "/data.csv") # nolint
-  
-  res <- GET(export_url, authenticate(username, password))
-  
-  if (status_code(res) == 200) {
-    csv_content <- content(res, as = "text", encoding = "UTF-8")
-    data <- read_csv(csv_content)
-    cat("✅ Downloaded data for:", forms_df$name[i], "\n")
-  } else {
-    cat("❌ Failed for:", forms_df$name[i], " (status:", status_code(res), ")\n")
-  }
-}
-
-forms_df[, c("name", "has_deployment", "deployment__submission_count")]
-
-
-forms <- assets_list$results
-forms_df <- as.data.frame(forms)
-names(forms_df)
-print(forms_df[, c("name", "uid")]) # Show form names and IDs
-
-# Loop through each asset and download its data as CSV
-for (i in seq_len(nrow(forms_df))) {
-  asset_id <- forms_df$uid[i]
-  export_url <- paste0("https://eu.kobotoolbox.org/api/v2/assets/", asset_id, "/data.csv") # nolint
-  res <- GET(export_url, authenticate(username, password))
-  if (status_code(res) == 200) {
-    csv_content <- content(res, as = "text", encoding = "UTF-8")
-    # Save or process csv_content as needed, e.g.:
-    data <- read_csv(csv_content) # nolint
-    cat("Downloaded data for asset:", asset_id, "\n")
-  } else {
-    cat("Failed to download asset:", asset_id, "\n")
-  }
-}
-
-data <- read_delim(csv_content, delim = ";")
 data <- data %>%
-  select(-c(`_uuid`, `_submission_time`, `_tags`, `_notes`, `_status`, `_edited`, `_xform_id_string`, `_attachments`, `_geolocation`, `_geoshape`, `_geotrace`, `start`, `end`, `deviceid`, `subscriberid`, `simserial`, `phonenumber`)) # nolint: line_length_linter.
+  select(`_id`, `_uuid`, `country`,region,`_validation_status`,
+  `area_total`, `hh_or_not`, # nolint: indentation_linter.
+  `irrig`,`farm_mgt`,`hh_men`,`hh_women`,
+  `div_score`,`synergy_score`,`recycling_score`,`efficiency_score`, 
+   `resilience_score`, `cultfood_score`,`cocrea_score`,`human_score`, # nolint: indentation_linter, commas_linter, line_length_linter.
+   `circular_score`, `respgov_score`, `caet_score`) # nolint: line_length_linter.
+
+
 
 #### Diversity
-##The Diversity score is calculated by the sum of the amount 
-of **cultivated crops**[score 0-4], amount of **tree species** [score 0-4], amount of **animal species** [score 0-4] and amount of **income producing activities** (div_activ) score [0-4]. this sum is then divided by 16 and multiplied by 100.
-caet_diversity <- function(){
-  Diversity <- data[,c('key', 'crops', 'animals', 'trees', 'div_activ')]
-  Diversity <- Diversity %>%
-    rowwise() %>%  #cleans data so there only is one number for crops animals trees ...
+##The Diversity score is calculated by the sum of the amount of **cultivated crops**[score 0-4], amount of **tree species** [score 0-4], amount of **animal species** [score 0-4] and amount of **income producing activities** (div_activ) score [0-4]. this sum is then divided by 16 and multiplied by 100. # nolint: line_length_linter.
+caet_diversity <- function(){ # nolint
+  Diversity <- data[,c('key', 'crops', 'animals', 'trees', 'div_activ')] # nolint
+  Diversity <- Diversity %>% # nolint
+    rowwise() %>%  #cleans data so there only is one number for crops animals trees ... # nolint
     mutate(div_sum = sum(c(crops, animals, trees, div_activ), na.rm = TRUE),
            div_aver = mean(c(crops ,animals ,trees ,div_activ),na.rm = TRUE),  # Is later used for Resilience # nolint
            div_score = round((div_sum/16)*100,6)) # calculates score
-  return(Diversity)
+    return(Diversity) # nolint
   }
 
 ### Synergies
