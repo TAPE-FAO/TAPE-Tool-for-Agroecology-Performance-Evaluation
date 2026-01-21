@@ -11,7 +11,11 @@ suppressPackageStartupMessages({
   library(jsonlite)
   library(DBI)
   library(RPostgres)
+library(dotenv)
+
 })
+
+load_dot_env()
 
 # ---------- Environment variables ----------
 kobo_token <- Sys.getenv("KOBO_TOKEN")
